@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
@@ -65,25 +65,26 @@ function parseCsv(text){
   }
   row.push(cell);rows.push(row);return rows;
 }
-function visibleDriveUrl(row){return row.find(v=>/https:\/\/drive\.google\.com\//i.test(String(v||'')))||''}
+function visibleDriveUrl(row,start=0){const cells=row.slice(start,start+5);return cells.find(v=>/https:\/\/drive\.google\.com\//i.test(String(v||'')))||''}
 function readSongsFromRows(rows){
   const groups=[{cat:'เพลงช้า',start:0,col:'A'},{cat:'เพลงเร็ว',start:5,col:'F'},{cat:'เพลงสากล',start:10,col:'K'}],out=[];
   rows.forEach((r,idx)=>{if(idx<3)return;groups.forEach(g=>{
     const title=clean(r[g.start]); if(!title||title==='เพลง')return;
     const chord=clean(r[g.start+1]), note=clean(r[g.start+2]), key=clean(r[g.start+3]), solo=clean(r[g.start+4]);
-    const driveUrl=visibleDriveUrl(r); const fileLike=/\.(pdf|jpe?g|png)$/i.test(title)||/drive\.google\.com/i.test(driveUrl);
+    const driveUrl=visibleDriveUrl(r,g.start); const fileLike=/\.(pdf|jpe?g|png)$/i.test(title)||/drive\.google\.com/i.test(driveUrl);
     out.push({cat:g.cat,row:idx+1,title,chord,note,key,solo,fileLike,driveUrl});
   })});
   return out;
 }
 function mergeDriveLinks(liveSongs){
   const oldByKey=new Map(FALLBACK_SONGS.map(s=>[s.cat+'|'+s.row+'|'+clean(s.title),s]));
-  const oldByName=new Map(FALLBACK_SONGS.filter(s=>s.driveUrl).map(s=>[clean(s.title).toLowerCase(),s]));
   return liveSongs.map(s=>{
-    const old=oldByKey.get(s.cat+'|'+s.row+'|'+clean(s.title))||oldByName.get(clean(s.title).toLowerCase());
-    if(old&&!s.driveUrl)s.driveUrl=old.driveUrl;
-    if(old&&old.driveMime)s.driveMime=old.driveMime;
-    if(old&&old.driveTitle)s.driveTitle=old.driveTitle;
+    const old=oldByKey.get(s.cat+'|'+s.row+'|'+clean(s.title));
+    if(old&&clean(old.title)===clean(s.title)){
+      if(old.driveUrl&&!s.driveUrl&&driveTitleMatchesSong(old.driveTitle||'',s.title))s.driveUrl=old.driveUrl;
+      if(old.driveMime&&s.driveUrl)s.driveMime=old.driveMime;
+      if(old.driveTitle&&s.driveUrl)s.driveTitle=old.driveTitle;
+    }
     return s;
   });
 }
@@ -162,10 +163,23 @@ function transposeKeyLabel(song){
 }
 function txText(text){text=text||'';if(!step)return text;let out='';for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1]||'',prev=text[i-1]||'',prev2=text[i-2]||'';if(/[A-G]/.test(ch)){const isWordNext=/[a-z]/.test(next)&&next!=='b';const isWordPrev=/[a-z]/.test(prev)&&!(prev==='b'&&/[A-G]/.test(prev2));if(!isWordNext&&!isWordPrev){let note=ch;if(next==='#'||next==='b'){note+=next;i++;}out+=txNote(note);continue;}}out+=ch;}return out;}
 function isBusk(song){return String(song.chord||'').startsWith('https://busk.town/')}
+function driveTitleToken(title){
+  return clean(title).toLowerCase().replace(/.(pdf|jpe?g|png|jpg)$/i,'').replace(/[s._-]+/g,' ').replace(/(key|drop|dr?oop|to|alto|sax|เพชร|วงเพชร|พี่ฝน).*$/i,'').replace(/[A-G](?:#|b)?m?(?:aj)?.*$/i,'').replace(/s+tt$/i,'').trim();
+}
+function driveTitleMatchesSong(fileTitle,songTitle){
+  const fileToken=driveTitleToken(fileTitle), songToken=driveTitleToken(songTitle);
+  if(!fileToken||!songToken)return false;
+  if(fileToken===songToken)return true;
+  return fileToken.length>=6&&songToken.length>=6&&(fileToken.includes(songToken)||songToken.includes(fileToken));
+}
+function safeDriveUrl(song){
+  if(!song.driveUrl)return '';
+  if(song.driveTitle)return driveTitleMatchesSong(song.driveTitle,song.title)?song.driveUrl:'';
+  return song.driveUrl;
+}
 function findDriveFile(song){
   const exactTitle=clean(song.title).toLowerCase();
-  const normalize=v=>String(v||'').toLowerCase().replace(/\.(pdf|jpe?g|png|jpg)$/i,'').replace(/[\s._\-]+/g,' ').replace(/\b(key|drop|to|alto|sax|เพชร|วงเพชร|พี่ฝน)\b.*$/i,'').trim();
-  return DRIVE_FILES.find(f=>clean(f.title).toLowerCase()===exactTitle) || DRIVE_FILES.find(f=>normalize(f.title)===normalize(song.title));
+  return DRIVE_FILES.find(f=>clean(f.title).toLowerCase()===exactTitle) || DRIVE_FILES.find(f=>driveTitleMatchesSong(f.title,song.title));
 }
 function driveId(url){
   url=String(url||'');
@@ -252,7 +266,7 @@ function remarkKey(song){return 'remark:'+song.cat+':'+song.row+':'+song.title}
 function autoRemark(song){const bits=[];if(song.chord&&!isBusk(song))bits.push(song.chord);if(song.key)bits.push('Key: '+song.key);if(song.solo)bits.push('Solo: '+song.solo);const cleaned=baseSongName(song.title);if(cleaned!==clean(song.title).replace(/\.(pdf|jpe?g|png)$/i,''))bits.push('ชื่อสำหรับค้นคอร์ด: '+cleaned);return bits.join(' | ')}
 function renderNotePanel(){el.shift.textContent=transposeKeyLabel(current);const out=txText(current.note);el.note.textContent=out||'เพลงนี้ยังไม่มีโน้ตตัวอักษรในข้อมูลที่ดึงมา';el.note.className=out?'':'empty'}
 function renderMain(){el.eyebrow.textContent=current.cat+' · แถว '+current.row;el.title.textContent=current.title;const chips=[];chips.push('ค้นคอร์ด: '+baseSongName(current.title));if(current.key)chips.push('Key: '+current.key);if(current.solo)chips.push(current.solo);el.chips.innerHTML=chips.map(c=>'<span class="chip">'+esc(c)+'</span>').join('');el.actions.innerHTML='<a class="link" target="_blank" rel="noreferrer" href="'+esc(sheetRange(current))+'">เปิดเพลงนี้ใน Google Sheet</a><a class="link" target="_blank" rel="noreferrer" href="'+esc(buskUrl(current))+'">เปิดคอร์ดใน Busk Town</a>';renderSetlist();renderNotePanel();renderFile();renderRemarks()}
-function renderFile(){const found=findDriveFile(current);const url=current.driveUrl||(found?'https://drive.google.com/file/d/'+found.id+'/view?usp=drivesdk':'');const fileKey=(url||'none')+'|'+current.cat+'|'+current.row+'|'+current.title;if(fileKey===renderedFileKey)return;renderedFileKey=fileKey;if(url){el.fileSource.textContent=found?'จับคู่จากโฟลเดอร์ Drive: '+found.title:'ฝังจากลิงก์ Google Drive ในชื่อเพลง';el.fileBody.innerHTML='<iframe class="drive-frame" loading="lazy" src="'+esc(drivePreview(url))+'" allow="autoplay"></iframe><div class="notice">ถ้า Google Drive ไม่แสดงตัวอย่าง ให้เปิดจากปุ่ม Google Sheet ด้านบนเพื่อตรวจสิทธิ์ไฟล์</div>';return;}el.fileSource.textContent=current.fileLike?'ชื่อเพลงเป็นไฟล์ แต่ยังจับคู่ Drive ไม่เจอ':'ไม่มีไฟล์แนบ';el.fileBody.innerHTML='<div class="notice">ยังไม่มีไฟล์ในโฟลเดอร์ Drive ที่จับคู่กับชื่อเพลงนี้ได้</div>'}
+function renderFile(){const directUrl=safeDriveUrl(current);const found=directUrl?null:findDriveFile(current);const url=directUrl||(found?'https://drive.google.com/file/d/'+found.id+'/view?usp=drivesdk':'');const fileKey=(url||'none')+'|'+current.cat+'|'+current.row+'|'+current.title;if(fileKey===renderedFileKey)return;renderedFileKey=fileKey;if(url){el.fileSource.textContent=found?'จับคู่จากโฟลเดอร์ Drive: '+found.title:'ฝังจากลิงก์ Google Drive ในชื่อเพลง';el.fileBody.innerHTML='<iframe class="drive-frame" loading="lazy" src="'+esc(drivePreview(url))+'" allow="autoplay"></iframe><div class="notice">ถ้า Google Drive ไม่แสดงตัวอย่าง ให้เปิดจากปุ่ม Google Sheet ด้านบนเพื่อตรวจสิทธิ์ไฟล์</div>';return;}el.fileSource.textContent=current.fileLike?'ชื่อเพลงเป็นไฟล์ แต่ยังจับคู่ Drive ไม่เจอ':'ไม่มีไฟล์แนบ';el.fileBody.innerHTML='<div class="notice">ยังไม่มีไฟล์ในโฟลเดอร์ Drive ที่จับคู่กับชื่อเพลงนี้ได้ หรือชื่อไฟล์ Drive ไม่ตรงกับชื่อเพลง</div>'}
 function setWriteStatus(target,text,isError=false){target.textContent=text;target.style.color=isError?'#9f1239':'var(--muted)'}
 function ensureWriteReady(){const ready=!!SHEET_WRITE_URL;if(el.writeConfigWarning){el.writeConfigWarning.classList.toggle('hidden',ready);el.writeConfigWarning.textContent=ready?'':'โหมดง่าย: ระบบจะคัดลอกข้อมูลให้ แล้วเปิด Google Sheet เพื่อวางเอง';}return ready}
 async function copyText(text){
