@@ -164,7 +164,7 @@ function transposeKeyLabel(song){
 function txText(text){text=text||'';if(!step)return text;let out='';for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1]||'',prev=text[i-1]||'',prev2=text[i-2]||'';if(/[A-G]/.test(ch)){const isWordNext=/[a-z]/.test(next)&&next!=='b';const isWordPrev=/[a-z]/.test(prev)&&!(prev==='b'&&/[A-G]/.test(prev2));if(!isWordNext&&!isWordPrev){let note=ch;if(next==='#'||next==='b'){note+=next;i++;}out+=txNote(note);continue;}}out+=ch;}return out;}
 function isBusk(song){return String(song.chord||'').startsWith('https://busk.town/')}
 function driveTitleToken(title){
-  return clean(title).toLowerCase().replace(/.(pdf|jpe?g|png|jpg)$/i,'').replace(/[s._-]+/g,' ').replace(/(key|drop|dr?oop|to|alto|sax|เพชร|วงเพชร|พี่ฝน).*$/i,'').replace(/[A-G](?:#|b)?m?(?:aj)?.*$/i,'').replace(/s+tt$/i,'').trim();
+  return clean(title).toLowerCase().replace(/\.(pdf|jpe?g|png|jpg)$/i,'').replace(/[\s._\-]+/g,' ').replace(/\b(key|drop|dr?oop|to|alto|sax|เพชร|วงเพชร|พี่ฝน)\b.*$/i,'').replace(/\b[A-G](?:#|b)?m?(?:aj)?\b.*$/i,'').replace(/\s+tt$/i,'').trim();
 }
 function driveTitleMatchesSong(fileTitle,songTitle){
   const fileToken=driveTitleToken(fileTitle), songToken=driveTitleToken(songTitle);
